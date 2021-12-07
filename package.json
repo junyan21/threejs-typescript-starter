@@ -12,6 +12,7 @@
   },
   "private": "true",
   "dependencies": {
+    "raw-loader": "^4.0.2",
     "three": "^0.135.0"
   }
 }
