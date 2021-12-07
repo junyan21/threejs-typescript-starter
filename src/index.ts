@@ -6,7 +6,10 @@ import {UnrealBloomPass} from 'three/examples/jsm/postprocessing/UnrealBloomPass
 import {GlitchPass} from 'three/examples/jsm/postprocessing/GlitchPass'
 import {ShaderPass} from 'three/examples/jsm/postprocessing/ShaderPass'
 import { SSAARenderPass } from 'three/examples/jsm/postprocessing/SSAARenderPass'
-import {LuminosityHighPassShader} from 'three/examples/jsm/shaders/LuminosityHighPassShader'
+import { LuminosityHighPassShader } from 'three/examples/jsm/shaders/LuminosityHighPassShader'
+
+import {TorusMesh, TorusMaterial} from './components/torus'
+import { Scene } from "three"
 
 const _VS = `
 varying vec2 vUv;
@@ -37,7 +40,8 @@ const CrapShader = {
 // GLRenderer
 const _renderer = (() => {
   const r = new THREE.WebGLRenderer({
-    antialias: true
+    antialias: true,
+    alpha: true
   })
   r.shadowMap.enabled = true
   r.shadowMap.type = THREE.PCFSoftShadowMap
@@ -95,21 +99,27 @@ controls.update()
 _scene.background = new THREE.TextureLoader().load('../assets/ramen.jpeg')
 
 // 3Dオブジェクト
-const knot = (() => {
-  const k = new THREE.Mesh(
-    new THREE.TorusKnotGeometry(5, 1.5, 100, 16),
-    new THREE.MeshStandardMaterial({ color: 0xffffff })
-  )
-  k.position.set(0, 15, 0)
-  k.castShadow = true
-  k.receiveShadow = true
-  return k
-})()
-_scene.add(knot)
+// const knot = (() => {
+//   const k = new THREE.Mesh(
+//     new THREE.TorusKnotGeometry(5, 1.5, 100, 16),
+//     new THREE.MeshStandardMaterial({ color: 0xffffff })
+//   )
+//   k.position.set(0, 15, 0)
+//   k.castShadow = true
+//   k.receiveShadow = true
+//   return k
+// })()
+// _scene.add(knot)
+
+// Torus
+_scene.add(TorusMesh)
+
+const _clock = new THREE.Clock()
 
 const animate = () => {
       requestAnimationFrame(() => {
         _composer.render()
+        TorusMaterial.uniforms.uTime.value = _clock.getElapsedTime()
         animate()
     })
 }
