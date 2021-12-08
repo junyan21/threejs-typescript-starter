@@ -13,6 +13,7 @@
   "private": "true",
   "dependencies": {
     "raw-loader": "^4.0.2",
+    "simplex-noise": "^3.0.0",
     "three": "^0.135.0"
   }
 }

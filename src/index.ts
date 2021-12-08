@@ -8,8 +8,11 @@ import {ShaderPass} from 'three/examples/jsm/postprocessing/ShaderPass'
 import { SSAARenderPass } from 'three/examples/jsm/postprocessing/SSAARenderPass'
 import { LuminosityHighPassShader } from 'three/examples/jsm/shaders/LuminosityHighPassShader'
 
-import {TorusMesh, TorusMaterial} from './components/torus'
-import { Scene } from "three"
+import SimplexNoise from 'simplex-noise'
+
+import { TorusMesh, TorusMaterial } from './components/torus'
+
+const noise = new SimplexNoise()
 
 const _VS = `
 varying vec2 vUv;
@@ -40,8 +43,9 @@ const CrapShader = {
 // GLRenderer
 const _renderer = (() => {
   const r = new THREE.WebGLRenderer({
-    antialias: true,
-    alpha: true
+    // Onにするとめっちゃ重い
+    // antialias: true,
+    // alpha: true
   })
   r.shadowMap.enabled = true
   r.shadowMap.type = THREE.PCFSoftShadowMap
@@ -94,26 +98,13 @@ _scene.add(_light)
 const controls = new OrbitControls(_camera, _renderer.domElement)
 controls.target.set(0, 20, 0)
 controls.update()
+controls.autoRotate = true
 
 // 背景
 _scene.background = new THREE.TextureLoader().load('../assets/ramen.jpeg')
 
-// 3Dオブジェクト
-// const knot = (() => {
-//   const k = new THREE.Mesh(
-//     new THREE.TorusKnotGeometry(5, 1.5, 100, 16),
-//     new THREE.MeshStandardMaterial({ color: 0xffffff })
-//   )
-//   k.position.set(0, 15, 0)
-//   k.castShadow = true
-//   k.receiveShadow = true
-//   return k
-// })()
-// _scene.add(knot)
-
 // Torus
 _scene.add(TorusMesh)
-
 const _clock = new THREE.Clock()
 
 const animate = () => {
@@ -121,7 +112,77 @@ const animate = () => {
         _composer.render()
         TorusMaterial.uniforms.uTime.value = _clock.getElapsedTime()
         animate()
+
+        if (_audio.isPlaying) {
+          const freqs = _analyzeAudio()
+          console.log(` ${freqs.lowerAvgFr}, ${freqs.lowerMaxFr}, ${freqs.upperAvgFr}, ${freqs.upperMaxFr} `)
+          _mapFreqsToTorus(TorusMesh, modulate(Math.pow(freqs.lowerMaxFr, 0.8), 0, 1, 0, 8), modulate(freqs.upperAvgFr, 0, 1, 0, 4))
+        }
     })
+}
+
+const _audio = new THREE.Audio(new THREE.AudioListener())
+const _analyzer = new THREE.AudioAnalyser(_audio, 128) // Analyzerは毎回の描画ループで再生成せずに同じものを保持する
+
+const _loadAudio = (sound: THREE.Audio<GainNode>) => {
+  const audioLoader = new THREE.AudioLoader()
+  audioLoader.load('../assets/herb.mp3', buffer => {
+    sound.setBuffer(buffer)
+    sound.setLoop(true)
+    sound.setVolume(1)
+    sound.play()
+  }, req => {
+    console.log(req.loaded / req.total)
+  },error => {
+    console.log("file read error: " + error)
+  })
+}
+
+const _analyzeAudio = () => {
+  const dataArray = _analyzer.getFrequencyData()
+
+  // ここからは波形データから加工
+  // ref: https://codepen.io/prakhar625/pen/zddKRj?editors=1010
+  const lowerHalf = dataArray.slice(0, dataArray.length / 2 - 1)
+  const upperHalf = dataArray.slice(dataArray.length / 2 - 1, dataArray.length - 1)
+  
+  const overallAvg = avg(dataArray)
+  const lowerMax = max(lowerHalf)
+  const lowerAvg = avg(lowerHalf)
+  const upperMax = max(upperHalf)
+  const upperAvg = avg(upperHalf)
+
+  const lowerMaxFr = lowerMax / lowerHalf.length
+  const lowerAvgFr = lowerAvg / lowerHalf.length
+  const upperMaxFr = upperMax / upperHalf.length
+  const upperAvgFr = upperAvg / upperHalf.length
+
+  return { lowerMaxFr, lowerAvgFr, upperMaxFr, upperAvgFr }
+}
+
+const _mapFreqsToTorus = (mesh:  THREE.Mesh<THREE.TorusGeometry, THREE.ShaderMaterial>, bassFr: number, treFr: number) => {  
+  // 最新バージョンのthreeでは、THREE.GeometoryからTHREE.BufferGeometryにIFが切り替わっているので、それ用の値のセットの仕方でやる
+  // https://sbcode.net/threejs/geometry-to-buffergeometry/#explode-points
+  const positions = mesh.geometry.attributes.position.array as Array<number>
+  for (let i = 0; i < positions.length; i += 3) {
+    // Vector3型で再現
+    const v = new THREE.Vector3(positions[i], positions[i + 1], positions[i + 2])
+
+    // 頂点座標の距離を変えて拡縮した見た目にする
+    const offset = mesh.geometry.parameters.radius
+    const amp = 7
+    const time = window.performance.now()
+    v.normalize()
+    const rf = 0.00001
+    const distance = (offset + bassFr) + noise.noise3D(v.x + time*rf*7, v.y + time*rf*8, v.z+time*rf*9) * amp * treFr
+    v.multiplyScalar(distance)
+
+    // Bufferに戻す
+    positions[i] = v.x
+    positions[i + 1] = v.y
+    positions[i + 2 ] = v.z
+  }
+  mesh.geometry.attributes.position.needsUpdate = true
 }
 
 // Windowサイズ変更コールバック
@@ -136,5 +197,30 @@ window.addEventListener('resize', () => {
 
 let app = null
 window.addEventListener('DOMContentLoaded', () => {
-  animate()
+  _loadAudio(_audio)
+    animate()
 })
+
+
+
+/*
+ Helper Functions
+ */
+function fractionate(val: number, minVal: number, maxVal: number) {
+    return (val - minVal)/(maxVal - minVal);
+}
+
+function modulate(val: number, minVal: number, maxVal: number, outMin: number, outMax: number) {
+    var fr = fractionate(val, minVal, maxVal);
+    var delta = outMax - outMin;
+    return outMin + (fr * delta);
+}
+
+function avg(arr: Uint8Array){
+    var total = arr.reduce(function(sum, b) { return sum + b; });
+    return (total / arr.length);
+}
+
+function max(arr: Uint8Array){
+    return arr.reduce(function(a, b){ return Math.max(a, b); })
+}

@@ -6,7 +6,7 @@ import fragmentShader from './shaders/fragment.frag'
 
 const geometry = new THREE.TorusGeometry(3, 1, 100, 100)
 
-const texture = new THREE.TextureLoader().load('../../assets/ramen.jpeg', (texture) => {
+const texture = new THREE.TextureLoader().load('../../assets/profile.jpg', (texture) => {
   texture.minFilter = THREE.NearestFilter
 })
 
